@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Barcode Scanner Integrated with NetSuite</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+        #interactive.viewport { position: relative; width: 100%; height: auto; border: 1px solid silver; }
+        canvas, video { max-width: 100%; }
+        #results { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Scan Barcodes and Update NetSuite</h1>
+    <button onclick="startScanning(true)">Scan 1D Barcode</button>
+    <button onclick="startScanning(false)">Scan QR Code</button>
+    <div id="interactive" class="viewport">
+        <video id="video" playsinline autoplay></video>
+    </div>
+    <div id="results">Scanned Results: <span id="barcodeResult">None</span></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.2.0/dist/quagga.min.js"></script>
+    <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+    <script>
+        const videoElement = document.getElementById('video');
+        const barcodeResult = document.getElementById('barcodeResult');
+        const netsuiteEndpoint = 'https://your-netsuite-instance.com/api/inventory';
+
+        async function startScanning(isOneD) {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                videoElement.srcObject = stream;
+                videoElement.play();
+                if (isOneD) {
+                    Quagga.init({
+                        inputStream: {
+                            type: 'LiveStream',
+                            target: videoElement
+                        },
+                        decoder: {
+                            readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "code_39_vin_reader", "codabar_reader", "upc_reader", "upc_e_reader"]
+                        }
+                    }, function(err) {
+                        if (err) {
+                            console.error(err);
+                            return;
+                        }
+                        Quagga.start();
+                    });
+                    Quagga.onDetected((result) => {
+                        handleBarcodeDetected(result.codeResult.code, isOneD);
+                        Quagga.stop();
+                        stream.getTracks().forEach(track => track.stop());
+                    });
+                } else {
+                    const context = canvas.getContext('2d');
+                    scanQRCode(context, videoElement, stream);
+                }
+            }
+        }
+
+        function scanQRCode(context, video, stream) {
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, canvas.width, canvas.height);
+            if (code) {
+                handleBarcodeDetected(code.data, false);
+                stream.getTracks().forEach(track => track.stop());
+            } else {
+                requestAnimationFrame(() => scanQRCode(context, video, stream));
+            }
+        }
+
+        async function handleBarcodeDetected(barcode, isOneD) {
+            const productType = isOneD ? '1D' : '2D';
+            try {
+                const response = await fetch(netsuiteEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer your_access_token',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ barcode, productType })
+                });
+                const data = await response.json();
+                barcodeResult.textContent = `Scanned ${productType} Barcode: ${barcode}, NetSuite Update: ${data.message}`;
+            } catch (error) {
+                console.error('Error updating NetSuite:', error);
+                barcodeResult.textContent = 'Failed to update NetSuite.';
+            }
+        }
+    </script>
+</body>
+</html>
