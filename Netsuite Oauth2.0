@@ -1,0 +1,41 @@
+const client_id = 'YOUR_CLIENT_ID';
+const client_secret = 'YOUR_CLIENT_SECRET';
+const redirect_uri = 'YOUR_REDIRECT_URI';
+const authorization_endpoint = 'https://<ACCOUNT_ID>.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token';
+
+function redirectToNetSuiteAuthorization() {
+    const url = new URL('https://<ACCOUNT_ID>.app.netsuite.com/app/login/oauth2/authenticate.nl');
+    url.searchParams.append('client_id', client_id);
+    url.searchParams.append('response_type', 'code');
+    url.searchParams.append('scope', 'YOUR_SCOPES');
+    url.searchParams.append('redirect_uri', redirect_uri);
+    url.searchParams.append('state', 'YOUR_UNIQUE_STATE');
+    window.location.href = url.toString();
+}
+
+async function fetchAccessToken(code) {
+    const body = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirect_uri
+    });
+
+    const response = await fetch(authorization_endpoint, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Basic ${btoa(client_id + ':' + client_secret)}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: body.toString()
+    });
+
+    const data = await response.json();
+    if (data.access_token) {
+        console.log('Access Token:', data.access_token);
+        // Use this access token to make API calls
+    } else {
+        console.error('Failed to obtain access token:', data);
+    }
+}
+
+// Use these functions in your login flow
